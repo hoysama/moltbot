@@ -6,7 +6,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const compiler = "tsdown";
-const compilerArgs = ["exec", compiler, "--no-clean"];
+const compilerArgs = [compiler, "--no-clean"];
 
 const gitWatchedPaths = ["src", "tsconfig.json", "package.json"];
 
@@ -26,7 +26,7 @@ const isExcludedSource = (filePath, srcRoot) => {
   return (
     relativePath.endsWith(".test.ts") ||
     relativePath.endsWith(".test.tsx") ||
-    relativePath.endsWith(`test-helpers.ts`)
+    relativePath.endsWith("test-helpers.ts")
   );
 };
 
@@ -176,6 +176,74 @@ const logRunner = (message, deps) => {
   deps.stderr.write(`[openclaw] ${message}\n`);
 };
 
+const hasCommand = (cmd, deps) => {
+  const rawPath = deps.env.PATH ?? "";
+  if (!rawPath) {
+    return false;
+  }
+
+  const dirs = rawPath.split(path.delimiter).filter(Boolean);
+  const isWindows = deps.platform === "win32";
+  const pathExts = isWindows
+    ? (deps.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean)
+    : [""];
+  const hasExt = path.extname(cmd) !== "";
+
+  for (const dir of dirs) {
+    if (hasExt) {
+      const full = path.join(dir, cmd);
+      if (deps.fs.existsSync(full)) {
+        return true;
+      }
+      continue;
+    }
+
+    if (isWindows) {
+      for (const ext of pathExts) {
+        const full = path.join(dir, `${cmd}${ext}`);
+        if (deps.fs.existsSync(full)) {
+          return true;
+        }
+      }
+      continue;
+    }
+
+    const full = path.join(dir, cmd);
+    try {
+      deps.fs.accessSync(full, deps.fs.constants.X_OK);
+      return true;
+    } catch {
+      // Not executable or doesn't exist; continue scanning.
+    }
+  }
+
+  return false;
+};
+
+const getBuildCommand = (deps) => {
+  const isWindows = deps.platform === "win32";
+
+  if (hasCommand("bun", deps)) {
+    return { cmd: "bun", args: ["x", ...compilerArgs], label: "bun" };
+  }
+
+  if (hasCommand("pnpm", deps)) {
+    if (isWindows) {
+      return { cmd: "cmd.exe", args: ["/d", "/s", "/c", "pnpm", "exec", ...compilerArgs], label: "pnpm" };
+    }
+    return { cmd: "pnpm", args: ["exec", ...compilerArgs], label: "pnpm" };
+  }
+
+  if (hasCommand("npm", deps)) {
+    if (isWindows) {
+      return { cmd: "cmd.exe", args: ["/d", "/s", "/c", "npm", "exec", "--", ...compilerArgs], label: "npm" };
+    }
+    return { cmd: "npm", args: ["exec", "--", ...compilerArgs], label: "npm" };
+  }
+
+  return null;
+};
+
 const runOpenClaw = async (deps) => {
   const nodeProcess = deps.spawn(deps.execPath, ["openclaw.mjs", ...deps.args], {
     cwd: deps.cwd,
@@ -231,10 +299,13 @@ export async function runNodeMain(params = {}) {
   }
 
   logRunner("Building TypeScript (dist is stale).", deps);
-  const buildCmd = deps.platform === "win32" ? "cmd.exe" : "pnpm";
-  const buildArgs =
-    deps.platform === "win32" ? ["/d", "/s", "/c", "pnpm", ...compilerArgs] : compilerArgs;
-  const build = deps.spawn(buildCmd, buildArgs, {
+  const buildTool = getBuildCommand(deps);
+  if (!buildTool) {
+    logRunner("Build failed: no package runner found (need bun, pnpm, or npm in PATH).", deps);
+    return 1;
+  }
+  logRunner(`Building TypeScript using ${buildTool.label}.`, deps);
+  const build = deps.spawn(buildTool.cmd, buildTool.args, {
     cwd: deps.cwd,
     env: deps.env,
     stdio: "inherit",
