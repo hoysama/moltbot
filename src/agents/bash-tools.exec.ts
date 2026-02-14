@@ -554,8 +554,9 @@ export function createExecTool(
               {
                 type: "text",
                 text:
-                  `${warningText}Approval required (id ${approvalSlug}). ` +
-                  "Approve to run; updates will arrive after completion.",
+                  `${warningText}Approval required (id ${approvalSlug}).\n` +
+                  `Approve from chat: /approve ${approvalSlug} allow-once (or allow-always / deny)\n` +
+                  "Updates will arrive after completion.",
               },
             ],
             details: {
@@ -795,8 +796,9 @@ export function createExecTool(
               {
                 type: "text",
                 text:
-                  `${warningText}Approval required (id ${approvalSlug}). ` +
-                  "Approve to run; updates will arrive after completion.",
+                  `${warningText}Approval required (id ${approvalSlug}).\n` +
+                  `Approve from chat: /approve ${approvalSlug} allow-once (or allow-always / deny)\n` +
+                  "Updates will arrive after completion.",
               },
             ],
             details: {
