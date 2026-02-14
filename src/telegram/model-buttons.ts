@@ -28,6 +28,7 @@ export type ModelsKeyboardParams = {
   currentPage: number;
   totalPages: number;
   pageSize?: number;
+  chatOnlyModels?: Set<string>;
 };
 
 const MODELS_PAGE_SIZE = 8;
@@ -141,7 +142,9 @@ export function buildModelsKeyboard(params: ModelsKeyboardParams): ButtonRow[] {
 
     const isCurrentModel = model === currentModelId;
     const displayText = truncateModelId(model, 38);
-    const text = isCurrentModel ? `${displayText} ✓` : displayText;
+    const isChatOnly = params.chatOnlyModels?.has(model) === true;
+    const baseText = isChatOnly ? `${displayText} (chat)` : displayText;
+    const text = isCurrentModel ? `${baseText} ✓` : baseText;
 
     rows.push([
       {

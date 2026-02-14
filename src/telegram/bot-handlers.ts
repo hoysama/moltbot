@@ -9,7 +9,10 @@ import {
   resolveInboundDebounceMs,
 } from "../auto-reply/inbound-debounce.js";
 import { buildCommandsPaginationKeyboard } from "../auto-reply/reply/commands-info.js";
-import { buildModelsProviderData } from "../auto-reply/reply/commands-models.js";
+import {
+  buildChatOnlyModelSet,
+  buildModelsProviderData,
+} from "../auto-reply/reply/commands-models.js";
 import { resolveStoredModelOverride } from "../auto-reply/reply/model-selection.js";
 import { listSkillCommandsForAgents } from "../auto-reply/skill-commands.js";
 import { buildCommandsMessagePaginated } from "../auto-reply/status.js";
@@ -694,6 +697,11 @@ export const registerTelegramHandlers = ({
           const pageSize = getModelsPageSize();
           const totalPages = calculateTotalPages(models.length, pageSize);
           const safePage = Math.max(1, Math.min(page, totalPages));
+          const chatOnlyModels = buildChatOnlyModelSet({
+            cfg,
+            provider,
+            models,
+          });
 
           // Resolve current model from session (prefer overrides)
           const currentModel = resolveTelegramSessionModel({
@@ -711,6 +719,7 @@ export const registerTelegramHandlers = ({
             currentPage: safePage,
             totalPages,
             pageSize,
+            chatOnlyModels,
           });
           const text = `Models (${provider}) — ${models.length} available`;
           await editMessageWithButtons(text, buttons);
