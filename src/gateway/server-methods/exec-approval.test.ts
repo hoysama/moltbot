@@ -211,6 +211,65 @@ describe("exec approval handlers", () => {
     );
   });
 
+  it("accepts resolving by approval id prefix when unique", async () => {
+    const manager = new ExecApprovalManager();
+    const handlers = createExecApprovalHandlers(manager);
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    const respond = vi.fn();
+    const context = {
+      broadcast: (event: string, payload: unknown) => {
+        broadcasts.push({ event, payload });
+      },
+    };
+
+    const fullId = "37ea4a0e-1111-2222-3333-444444444444";
+    const requestPromise = handlers["exec.approval.request"]({
+      params: {
+        id: fullId,
+        command: "echo ok",
+        cwd: "/tmp",
+        host: "gateway",
+        timeoutMs: 2000,
+      },
+      respond,
+      context: context as unknown as Parameters<
+        (typeof handlers)["exec.approval.request"]
+      >[0]["context"],
+      client: null,
+      req: { id: "req-1", type: "req", method: "exec.approval.request" },
+      isWebchatConnect: noop,
+    });
+
+    const resolveRespond = vi.fn();
+    await handlers["exec.approval.resolve"]({
+      params: { id: "37ea4a0e", decision: "allow-once" },
+      respond: resolveRespond,
+      context: context as unknown as Parameters<
+        (typeof handlers)["exec.approval.resolve"]
+      >[0]["context"],
+      client: { connect: { client: { id: "cli", displayName: "CLI" } } },
+      req: { id: "req-2", type: "req", method: "exec.approval.resolve" },
+      isWebchatConnect: noop,
+    });
+
+    await requestPromise;
+
+    expect(resolveRespond).toHaveBeenCalledWith(true, { ok: true }, undefined);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ id: fullId, decision: "allow-once" }),
+      undefined,
+    );
+    expect(
+      broadcasts.some(
+        (entry) =>
+          entry.event === "exec.approval.resolved" &&
+          (entry.payload as { id?: string })?.id === fullId,
+      ),
+    ).toBe(true);
+  });
+
   it("rejects duplicate approval ids", async () => {
     const manager = new ExecApprovalManager();
     const handlers = createExecApprovalHandlers(manager);

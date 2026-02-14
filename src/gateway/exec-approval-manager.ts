@@ -75,6 +75,29 @@ export class ExecApprovalManager {
     return true;
   }
 
+  resolveByPrefix(
+    prefix: string,
+    decision: ExecApprovalDecision,
+    resolvedBy?: string | null,
+  ): { ok: true; id: string } | { ok: false; reason: "not-found" | "ambiguous" } {
+    const trimmed = prefix.trim();
+    if (!trimmed) {
+      return { ok: false, reason: "not-found" };
+    }
+
+    const matches = [...this.pending.keys()].filter((id) => id.startsWith(trimmed));
+    if (matches.length === 0) {
+      return { ok: false, reason: "not-found" };
+    }
+    if (matches.length > 1) {
+      return { ok: false, reason: "ambiguous" };
+    }
+
+    const id = matches[0];
+    const ok = this.resolve(id, decision, resolvedBy);
+    return ok ? { ok: true, id } : { ok: false, reason: "not-found" };
+  }
+
   getSnapshot(recordId: string): ExecApprovalRecord | null {
     const entry = this.pending.get(recordId);
     return entry?.record ?? null;

@@ -116,18 +116,44 @@ export function createExecApprovalHandlers(
         return;
       }
       const resolvedBy = client?.connect?.client?.displayName ?? client?.connect?.client?.id;
-      const ok = manager.resolve(p.id, decision, resolvedBy ?? null);
+
+      // Chat surfaces usually only show a short approval slug (first 8 chars).
+      // Allow resolving by unique prefix so `/approve <slug> allow-once` works
+      // without requiring a web UI lookup for the full UUID.
+      let resolvedId = p.id;
+      let ok = manager.resolve(resolvedId, decision, resolvedBy ?? null);
+      if (!ok) {
+        const prefix = p.id.trim();
+        // Only attempt prefix matching for reasonably short ids to avoid surprising behavior.
+        if (prefix.length >= 6 && prefix.length <= 12) {
+          const matched = manager.resolveByPrefix(prefix, decision, resolvedBy ?? null);
+          if (matched.ok) {
+            ok = true;
+            resolvedId = matched.id;
+          } else if (matched.reason === "ambiguous") {
+            respond(
+              false,
+              undefined,
+              errorShape(
+                ErrorCodes.INVALID_REQUEST,
+                "ambiguous approval id prefix (use the full id from the Approvals UI)",
+              ),
+            );
+            return;
+          }
+        }
+      }
       if (!ok) {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown approval id"));
         return;
       }
       context.broadcast(
         "exec.approval.resolved",
-        { id: p.id, decision, resolvedBy, ts: Date.now() },
+        { id: resolvedId, decision, resolvedBy, ts: Date.now() },
         { dropIfSlow: true },
       );
       void opts?.forwarder
-        ?.handleResolved({ id: p.id, decision, resolvedBy, ts: Date.now() })
+        ?.handleResolved({ id: resolvedId, decision, resolvedBy, ts: Date.now() })
         .catch((err) => {
           context.logGateway?.error?.(`exec approvals: forward resolve failed: ${String(err)}`);
         });
