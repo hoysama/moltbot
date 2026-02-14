@@ -56,6 +56,7 @@ import {
 } from "../skills.js";
 import { resolveTranscriptPolicy } from "../transcript-policy.js";
 import { buildEmbeddedExtensionPaths } from "./extensions.js";
+import { resolveDisableToolsFromExtraParams } from "./extra-params.js";
 import {
   logToolSchemasForGoogle,
   sanitizeSessionHistory,
@@ -218,28 +219,36 @@ export async function compactEmbeddedPiSessionDirect(
       warn: makeBootstrapWarn({ sessionLabel, warn: (message) => log.warn(message) }),
     });
     const runAbortController = new AbortController();
-    const toolsRaw = createOpenClawCodingTools({
-      exec: {
-        ...resolveExecToolDefaults(params.config),
-        elevated: params.bashElevated,
-      },
-      sandbox,
-      messageProvider: params.messageChannel ?? params.messageProvider,
-      agentAccountId: params.agentAccountId,
-      sessionKey: params.sessionKey ?? params.sessionId,
-      groupId: params.groupId,
-      groupChannel: params.groupChannel,
-      groupSpace: params.groupSpace,
-      spawnedBy: params.spawnedBy,
-      senderIsOwner: params.senderIsOwner,
-      agentDir,
-      workspaceDir: effectiveWorkspace,
-      config: params.config,
-      abortSignal: runAbortController.signal,
-      modelProvider: model.provider,
+    const disableToolsFromExtraParams = resolveDisableToolsFromExtraParams({
+      cfg: params.config,
+      provider,
       modelId,
-      modelAuthMode: resolveModelAuthMode(model.provider, params.config),
     });
+    const toolsRaw =
+      disableToolsFromExtraParams === true
+        ? []
+        : createOpenClawCodingTools({
+            exec: {
+              ...resolveExecToolDefaults(params.config),
+              elevated: params.bashElevated,
+            },
+            sandbox,
+            messageProvider: params.messageChannel ?? params.messageProvider,
+            agentAccountId: params.agentAccountId,
+            sessionKey: params.sessionKey ?? params.sessionId,
+            groupId: params.groupId,
+            groupChannel: params.groupChannel,
+            groupSpace: params.groupSpace,
+            spawnedBy: params.spawnedBy,
+            senderIsOwner: params.senderIsOwner,
+            agentDir,
+            workspaceDir: effectiveWorkspace,
+            config: params.config,
+            abortSignal: runAbortController.signal,
+            modelProvider: model.provider,
+            modelId,
+            modelAuthMode: resolveModelAuthMode(model.provider, params.config),
+          });
     const tools = sanitizeToolsForGoogle({ tools: toolsRaw, provider });
     logToolSchemasForGoogle({ tools, provider });
     const machineName = await getMachineDisplayName();
