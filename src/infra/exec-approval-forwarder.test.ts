@@ -106,6 +106,46 @@ describe("exec approval forwarder", () => {
     expect(getFirstDeliveryText(deliver)).toContain("Command: `echo hello`");
   });
 
+  it("attaches Telegram inline approval buttons for telegram targets", async () => {
+    vi.useFakeTimers();
+    const deliver = vi.fn().mockResolvedValue([]);
+    const cfg = {
+      approvals: {
+        exec: {
+          enabled: true,
+          mode: "targets",
+          targets: [{ channel: "telegram", to: "123" }],
+        },
+      },
+    } as OpenClawConfig;
+
+    const forwarder = createExecApprovalForwarder({
+      getConfig: () => cfg,
+      deliver,
+      nowMs: () => 1000,
+      resolveSessionTarget: () => null,
+    });
+
+    await forwarder.handleRequested(baseRequest);
+
+    const firstCall = deliver.mock.calls[0]?.[0] as
+      | {
+          payloads?: Array<{
+            channelData?: {
+              telegram?: {
+                buttons?: Array<Array<{ text?: string; callback_data?: string }>>;
+              };
+            };
+          }>;
+        }
+      | undefined;
+    const buttons = firstCall?.payloads?.[0]?.channelData?.telegram?.buttons ?? [];
+    expect(buttons[0]?.[0]?.text).toBe("Allow once");
+    expect(buttons[0]?.[1]?.text).toBe("Always allow");
+    expect(buttons[1]?.[0]?.text).toBe("Deny");
+    expect(buttons[0]?.[0]?.callback_data).toMatch(/^\/approve [a-z0-9-]+ allow-once$/i);
+  });
+
   it("formats complex commands as fenced code blocks", async () => {
     vi.useFakeTimers();
     const deliver = vi.fn().mockResolvedValue([]);
