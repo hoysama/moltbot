@@ -2,7 +2,11 @@ import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { Context, Model, SimpleStreamOptions } from "@mariozechner/pi-ai";
 import { AssistantMessageEventStream } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
-import { applyExtraParamsToAgent, resolveExtraParams } from "./pi-embedded-runner.js";
+import {
+  applyExtraParamsToAgent,
+  resolveDisableToolsFromExtraParams,
+  resolveExtraParams,
+} from "./pi-embedded-runner.js";
 
 describe("resolveExtraParams", () => {
   it("returns undefined with no model config", () => {
@@ -159,5 +163,76 @@ describe("applyExtraParamsToAgent", () => {
     void agent.streamFn?.(model, context, {});
 
     expect(payload.store).toBe(false);
+  });
+});
+
+describe("resolveDisableToolsFromExtraParams", () => {
+  it("returns true when model params disable tools", () => {
+    const result = resolveDisableToolsFromExtraParams({
+      cfg: {
+        agents: {
+          defaults: {
+            models: {
+              "kilo/z-ai/glm-5:free": {
+                params: {
+                  disableTools: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      provider: "kilo",
+      modelId: "z-ai/glm-5:free",
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("parses string values for disableTools", () => {
+    const result = resolveDisableToolsFromExtraParams({
+      cfg: {
+        agents: {
+          defaults: {
+            models: {
+              "kilo/minimax/minimax-m2.5:free": {
+                params: {
+                  disableTools: "true",
+                },
+              },
+            },
+          },
+        },
+      },
+      provider: "kilo",
+      modelId: "minimax/minimax-m2.5:free",
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("lets explicit overrides re-enable tools", () => {
+    const result = resolveDisableToolsFromExtraParams({
+      cfg: {
+        agents: {
+          defaults: {
+            models: {
+              "kilo/arcee-ai/trinity-large-preview:free": {
+                params: {
+                  disableTools: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      provider: "kilo",
+      modelId: "arcee-ai/trinity-large-preview:free",
+      extraParamsOverride: {
+        disableTools: false,
+      },
+    });
+
+    expect(result).toBe(false);
   });
 });

@@ -29,6 +29,55 @@ export function resolveExtraParams(params: {
   return modelConfig?.params ? { ...modelConfig.params } : undefined;
 }
 
+function mergeExtraParams(
+  extraParams: Record<string, unknown> | undefined,
+  extraParamsOverride?: Record<string, unknown>,
+): Record<string, unknown> {
+  const override =
+    extraParamsOverride && Object.keys(extraParamsOverride).length > 0
+      ? Object.fromEntries(
+          Object.entries(extraParamsOverride).filter(([, value]) => value !== undefined),
+        )
+      : undefined;
+  return Object.assign({}, extraParams, override);
+}
+
+function parseBooleanFlag(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "0", "no", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolve per-model tool toggle from extra params (`params.disableTools`).
+ *
+ * @internal Exported for testing only
+ */
+export function resolveDisableToolsFromExtraParams(params: {
+  cfg: OpenClawConfig | undefined;
+  provider: string;
+  modelId: string;
+  extraParamsOverride?: Record<string, unknown>;
+}): boolean | undefined {
+  const extraParams = resolveExtraParams({
+    cfg: params.cfg,
+    provider: params.provider,
+    modelId: params.modelId,
+  });
+  const merged = mergeExtraParams(extraParams, params.extraParamsOverride);
+  return parseBooleanFlag(merged.disableTools);
+}
+
 type CacheRetention = "none" | "short" | "long";
 type CacheRetentionStreamOptions = Partial<SimpleStreamOptions> & {
   cacheRetention?: CacheRetention;
@@ -190,13 +239,7 @@ export function applyExtraParamsToAgent(
     provider,
     modelId,
   });
-  const override =
-    extraParamsOverride && Object.keys(extraParamsOverride).length > 0
-      ? Object.fromEntries(
-          Object.entries(extraParamsOverride).filter(([, value]) => value !== undefined),
-        )
-      : undefined;
-  const merged = Object.assign({}, extraParams, override);
+  const merged = mergeExtraParams(extraParams, extraParamsOverride);
   const wrappedStreamFn = createStreamFnWithExtraParams(agent.streamFn, merged, provider);
 
   if (wrappedStreamFn) {
