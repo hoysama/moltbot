@@ -107,6 +107,19 @@ function shouldSkipDiscordForwarding(cfg: OpenClawConfig): boolean {
   return target === "channel" || target === "both";
 }
 
+function buildTelegramApprovalButtons(id: string): Array<Array<{ text: string; callback_data: string }>> {
+  // Keep callback_data short (Telegram limit is 64 bytes) and rely on
+  // unique prefix resolution in exec.approval.resolve.
+  const shortId = id.slice(0, 12);
+  return [
+    [
+      { text: "Allow once", callback_data: `/approve ${shortId} allow-once` },
+      { text: "Always allow", callback_data: `/approve ${shortId} allow-always` },
+    ],
+    [{ text: "Deny", callback_data: `/approve ${shortId} deny` }],
+  ];
+}
+
 function formatApprovalCommand(command: string): { inline: boolean; text: string } {
   if (!command.includes("\n") && !command.includes("`")) {
     return { inline: true, text: `\`${command}\`` };
@@ -206,6 +219,7 @@ async function deliverToTargets(params: {
   text: string;
   deliver: typeof deliverOutboundPayloads;
   shouldSend?: () => boolean;
+  telegramButtons?: Array<Array<{ text: string; callback_data: string }>>;
 }) {
   const deliveries = params.targets.map(async (target) => {
     if (params.shouldSend && !params.shouldSend()) {
@@ -216,13 +230,24 @@ async function deliverToTargets(params: {
       return;
     }
     try {
+      const payload =
+        channel === "telegram" && params.telegramButtons
+          ? {
+              text: params.text,
+              channelData: {
+                telegram: {
+                  buttons: params.telegramButtons,
+                },
+              },
+            }
+          : { text: params.text };
       await params.deliver({
         cfg: params.cfg,
         channel,
         to: target.to,
         accountId: target.accountId,
         threadId: target.threadId,
-        payloads: [{ text: params.text }],
+        payloads: [payload],
       });
     } catch (err) {
       log.error(`exec approvals: failed to deliver to ${channel}:${target.to}: ${String(err)}`);
@@ -304,11 +329,13 @@ export function createExecApprovalForwarder(
     }
 
     const text = buildRequestMessage(request, nowMs());
+    const telegramButtons = buildTelegramApprovalButtons(request.id);
     await deliverToTargets({
       cfg,
       targets: filteredTargets,
       text,
       deliver,
+      telegramButtons,
       shouldSend: () => pending.get(request.id) === pendingEntry,
     });
   };
