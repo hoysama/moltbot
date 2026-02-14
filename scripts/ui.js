@@ -43,9 +43,17 @@ function which(cmd) {
 }
 
 function resolveRunner() {
+  const bun = which("bun");
+  if (bun) {
+    return { cmd: bun, kind: "bun" };
+  }
   const pnpm = which("pnpm");
   if (pnpm) {
     return { cmd: pnpm, kind: "pnpm" };
+  }
+  const npm = which("npm");
+  if (npm) {
+    return { cmd: npm, kind: "npm" };
   }
   return null;
 }
@@ -104,7 +112,7 @@ if (!action) {
 
 const runner = resolveRunner();
 if (!runner) {
-  process.stderr.write("Missing UI runner: install pnpm, then retry.\n");
+  process.stderr.write("Missing UI runner: install bun (recommended), pnpm, or npm, then retry.\n");
   process.exit(1);
 }
 
@@ -128,10 +136,26 @@ if (action === "install") {
   run(runner.cmd, ["install", ...rest]);
 } else {
   if (!depsInstalled(action === "test" ? "test" : "build")) {
-    const installEnv =
-      action === "build" ? { ...process.env, NODE_ENV: "production" } : process.env;
-    const installArgs = action === "build" ? ["install", "--prod"] : ["install"];
+    const installEnv = action === "build" ? { ...process.env, NODE_ENV: "production" } : process.env;
+    const installArgs =
+      runner.kind === "bun"
+        ? action === "build"
+          ? ["install", "--production", "--no-save"]
+          : ["install", "--no-save"]
+        : runner.kind === "npm"
+          ? action === "build"
+            ? ["install", "--omit=dev", "--no-package-lock"]
+            : ["install", "--no-package-lock"]
+          : action === "build"
+            ? ["install", "--prod"]
+            : ["install"];
     runSync(runner.cmd, installArgs, installEnv);
   }
-  run(runner.cmd, ["run", script, ...rest]);
+  const runArgs =
+    runner.kind === "bun"
+      ? ["run", script, ...rest]
+      : runner.kind === "npm"
+        ? ["run", script, ...rest]
+        : ["run", script, ...rest];
+  run(runner.cmd, runArgs);
 }
