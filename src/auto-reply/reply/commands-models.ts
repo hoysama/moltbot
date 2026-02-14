@@ -27,6 +27,24 @@ export type ModelsProviderData = {
   resolvedDefault: { provider: string; model: string };
 };
 
+export function buildChatOnlyModelSet(params: {
+  cfg: OpenClawConfig;
+  provider: string;
+  models: string[];
+}): Set<string> {
+  const chatOnly = new Set<string>();
+  const provider = normalizeProviderId(params.provider);
+  const modelOverrides = params.cfg.agents?.defaults?.models ?? {};
+  for (const modelId of params.models) {
+    const modelKey = `${provider}/${modelId}`;
+    const modelCfg = modelOverrides[modelKey];
+    if (modelCfg?.params?.disableTools === true) {
+      chatOnly.add(modelId);
+    }
+  }
+  return chatOnly;
+}
+
 /**
  * Build provider/model data from config and catalog.
  * Exported for reuse by callback handlers.
@@ -253,6 +271,11 @@ export async function resolveModelsCommandReply(params: {
     const telegramPageSize = getModelsPageSize();
     const totalPages = calculateTotalPages(total, telegramPageSize);
     const safePage = Math.max(1, Math.min(page, totalPages));
+    const chatOnlyModels = buildChatOnlyModelSet({
+      cfg: params.cfg,
+      provider,
+      models,
+    });
 
     const buttons = buildModelsKeyboard({
       provider,
@@ -261,6 +284,7 @@ export async function resolveModelsCommandReply(params: {
       currentPage: safePage,
       totalPages,
       pageSize: telegramPageSize,
+      chatOnlyModels,
     });
 
     const text = `Models (${provider}) — ${total} available`;
@@ -288,12 +312,18 @@ export async function resolveModelsCommandReply(params: {
   const startIndex = (safePage - 1) * effectivePageSize;
   const endIndexExclusive = Math.min(total, startIndex + effectivePageSize);
   const pageModels = models.slice(startIndex, endIndexExclusive);
+  const chatOnlyModels = buildChatOnlyModelSet({
+    cfg: params.cfg,
+    provider,
+    models: pageModels,
+  });
 
   const header = `Models (${provider}) — showing ${startIndex + 1}-${endIndexExclusive} of ${total} (page ${safePage}/${pageCount})`;
 
   const lines: string[] = [header];
   for (const id of pageModels) {
-    lines.push(`- ${provider}/${id}`);
+    const chatOnlySuffix = chatOnlyModels.has(id) ? " (chat only)" : "";
+    lines.push(`- ${provider}/${id}${chatOnlySuffix}`);
   }
 
   lines.push("", "Switch: /model <provider/model>");

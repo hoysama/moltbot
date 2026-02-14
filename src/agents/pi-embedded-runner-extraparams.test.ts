@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyExtraParamsToAgent,
   resolveDisableToolsFromExtraParams,
+  resolveOpenRouterRoutingFromExtraParams,
   resolveExtraParams,
 } from "./pi-embedded-runner.js";
 
@@ -165,5 +166,72 @@ describe("resolveDisableToolsFromExtraParams", () => {
     });
 
     expect(result).toBe(false);
+  });
+});
+
+describe("resolveOpenRouterRoutingFromExtraParams", () => {
+  it("resolves OpenRouter routing options from model params", () => {
+    const routing = resolveOpenRouterRoutingFromExtraParams({
+      openrouterDataCollection: "allow",
+      openrouterAllowFallbacks: false,
+      openrouterRequireParameters: true,
+      openrouterProviderOrder: ["openai", "anthropic"],
+    });
+
+    expect(routing).toEqual({
+      data_collection: "allow",
+      allow_fallbacks: false,
+      require_parameters: true,
+      order: ["openai", "anthropic"],
+    });
+  });
+});
+
+describe("applyExtraParamsToAgent (OpenRouter routing)", () => {
+  it("injects provider routing payload for OpenRouter-compatible models", () => {
+    const payloads: Array<Record<string, unknown>> = [];
+    const baseStreamFn: StreamFn = (_model, _context, options) => {
+      const payload: Record<string, unknown> = {};
+      options?.onPayload?.(payload);
+      payloads.push(payload);
+      return new AssistantMessageEventStream();
+    };
+    const agent = { streamFn: baseStreamFn };
+
+    applyExtraParamsToAgent(
+      agent,
+      {
+        agents: {
+          defaults: {
+            models: {
+              "kilo/deepseek/deepseek-r1-0528:free": {
+                params: {
+                  openrouterDataCollection: "allow",
+                  openrouterRequireParameters: false,
+                },
+              },
+            },
+          },
+        },
+      },
+      "kilo",
+      "deepseek/deepseek-r1-0528:free",
+    );
+
+    const model = {
+      api: "openai-completions",
+      provider: "kilo",
+      id: "deepseek/deepseek-r1-0528:free",
+      baseUrl: "https://api.kilo.ai/api/gateway",
+    } as Model<"openai-completions">;
+    const context: Context = { messages: [] };
+
+    void agent.streamFn?.(model, context, undefined);
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.provider).toEqual({
+      data_collection: "allow",
+      require_parameters: false,
+    });
   });
 });
