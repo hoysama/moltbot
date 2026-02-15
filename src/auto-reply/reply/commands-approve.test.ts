@@ -84,6 +84,51 @@ describe("/approve command", () => {
     );
   });
 
+  it("resolves approval from reply context when only decision is provided", async () => {
+    const cfg = {
+      commands: { text: true },
+      channels: { whatsapp: { allowFrom: ["*"] } },
+    } as OpenClawConfig;
+    const params = buildParams("/approve allow-always", cfg, {
+      SenderId: "123",
+      ReplyToBody: "🔒 Exec approval required\nID: 96cea6c9-2e79-44db-b135-897f845d3206",
+    });
+
+    const mockCallGateway = vi.mocked(callGateway);
+    mockCallGateway.mockResolvedValueOnce({ ok: true });
+
+    const result = await handleCommands(params);
+    expect(result.shouldContinue).toBe(false);
+    expect(result.reply?.text).toContain("Exec approval allow-always submitted");
+    expect(mockCallGateway).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "exec.approval.resolve",
+        params: {
+          id: "96cea6c9-2e79-44db-b135-897f845d3206",
+          decision: "allow-always",
+        },
+      }),
+    );
+  });
+
+  it("rejects decision-only approve when no approval id is available", async () => {
+    const cfg = {
+      commands: { text: true },
+      channels: { whatsapp: { allowFrom: ["*"] } },
+    } as OpenClawConfig;
+    const params = buildParams("/approve allow-once", cfg, {
+      SenderId: "123",
+    });
+
+    const mockCallGateway = vi.mocked(callGateway);
+    mockCallGateway.mockResolvedValueOnce({ ok: true });
+
+    const result = await handleCommands(params);
+    expect(result.shouldContinue).toBe(false);
+    expect(result.reply?.text).toContain("Missing approval ID");
+    expect(mockCallGateway).not.toHaveBeenCalled();
+  });
+
   it("rejects gateway clients without approvals scope", async () => {
     const cfg = {
       commands: { text: true },
