@@ -23,7 +23,7 @@ const DECISION_ALIASES: Record<string, "allow-once" | "allow-always" | "deny"> =
 };
 
 type ParsedApproveCommand =
-  | { ok: true; id: string; decision: "allow-once" | "allow-always" | "deny" }
+  | { ok: true; id?: string; decision: "allow-once" | "allow-always" | "deny" }
   | { ok: false; error: string };
 
 function parseApproveCommand(raw: string): ParsedApproveCommand | null {
@@ -36,6 +36,14 @@ function parseApproveCommand(raw: string): ParsedApproveCommand | null {
     return { ok: false, error: "Usage: /approve <id> allow-once|allow-always|deny" };
   }
   const tokens = rest.split(/\s+/).filter(Boolean);
+  if (tokens.length === 1) {
+    const only = tokens[0].toLowerCase();
+    const decision = DECISION_ALIASES[only];
+    if (decision) {
+      return { ok: true, decision };
+    }
+    return { ok: false, error: "Usage: /approve <id> allow-once|allow-always|deny" };
+  }
   if (tokens.length < 2) {
     return { ok: false, error: "Usage: /approve <id> allow-once|allow-always|deny" };
   }
@@ -58,6 +66,14 @@ function parseApproveCommand(raw: string): ParsedApproveCommand | null {
     };
   }
   return { ok: false, error: "Usage: /approve <id> allow-once|allow-always|deny" };
+}
+
+function extractApprovalId(text?: string | null): string | undefined {
+  if (!text?.trim()) {
+    return undefined;
+  }
+  const match = text.match(/\bID:\s*([A-Za-z0-9-]{6,})\b/i);
+  return match?.[1]?.trim();
 }
 
 function buildResolvedByLabel(params: Parameters<CommandHandler>[0]): string {
@@ -86,6 +102,16 @@ export const handleApproveCommand: CommandHandler = async (params, allowTextComm
     return { shouldContinue: false, reply: { text: parsed.error } };
   }
 
+  const approvalId = parsed.id ?? extractApprovalId(params.ctx.ReplyToBody);
+  if (!approvalId) {
+    return {
+      shouldContinue: false,
+      reply: {
+        text: "❌ Missing approval ID. Use /approve <id> allow-once|allow-always|deny or reply to the approval message with /approve <decision>.",
+      },
+    };
+  }
+
   if (isInternalMessageChannel(params.command.channel)) {
     const scopes = params.ctx.GatewayClientScopes ?? [];
     const hasApprovals = scopes.includes("operator.approvals") || scopes.includes("operator.admin");
@@ -104,7 +130,7 @@ export const handleApproveCommand: CommandHandler = async (params, allowTextComm
   try {
     await callGateway({
       method: "exec.approval.resolve",
-      params: { id: parsed.id, decision: parsed.decision },
+      params: { id: approvalId, decision: parsed.decision },
       clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
       clientDisplayName: `Chat approval (${resolvedBy})`,
       mode: GATEWAY_CLIENT_MODES.BACKEND,
@@ -120,6 +146,6 @@ export const handleApproveCommand: CommandHandler = async (params, allowTextComm
 
   return {
     shouldContinue: false,
-    reply: { text: `✅ Exec approval ${parsed.decision} submitted for ${parsed.id}.` },
+    reply: { text: `✅ Exec approval ${parsed.decision} submitted for ${approvalId}.` },
   };
 };
